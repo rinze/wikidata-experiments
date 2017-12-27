@@ -1,0 +1,48 @@
+---
+title: "Wikidata SPARQL experiments"
+author: "José María Mateos - http://rinzewind.org/blog-{en,es}"
+date: "December 26, 2017"
+output: 
+  html_document: 
+    fig_height: 7
+    fig_width: 10
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(WikidataQueryServiceR)
+```
+
+# References
+
+* https://www.wikidata.org/wiki/Wikidata:SPARQL_tutorial
+
+# Questions
+
+## When to use `wd:`, `wdt:`, `p:`, `ps:`, `pq:`?
+
+# Examples
+
+## All Montreal mayors
+
+```{r montreal_mayors}
+query <- '
+SELECT ?mayor ?mayorLabel ?start_term ?end_term ?partyLabel WHERE {
+  ?mayor (wdt:P31/wdt:P279*) wd:Q5.  # look for human beings
+  ?mayor wdt:P39 wd:Q177645.         # that list "Mayor of Montreal" as occupation
+  ?mayor p:P39 ?statement.           # and from their term
+  ?statement pq:P580 ?start_term.    # obtain the start date
+  OPTIONAL {?statement pq:P582 ?end_term}.  # and the end date if present
+  OPTIONAL {?mayor p:P102 [ps:P102 ?party]}. # and the party if present
+  FILTER(year(?start_term) >= 1990 || year(?end_term) >= 1990) # and just take people around 1990 onwards
+
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
+}
+ORDER BY ?start_term
+'
+
+res <- query_wikidata(query)
+print(res)
+
+```
