@@ -22,6 +22,8 @@ library(WikidataQueryServiceR)
 
 ## When to use `wd:`, `wdt:`, `p:`, `ps:`, `pq:`?
 
+Seems to be (rule of thumb): `p:` is a statement, `ps:` self-references a statement (see how we obtain the party in the Montreal mayor list), `pq:` is a property of a statement.
+
 # Examples
 
 ## All Montreal mayors
@@ -45,4 +47,99 @@ ORDER BY ?start_term
 res <- query_wikidata(query)
 print(res)
 
+```
+
+## All Madrid mayors
+
+Should be the same as the previous one, but using `Q17078548`.
+
+```{r madrid_mayors}
+query <- '
+SELECT ?mayor ?mayorLabel ?start_term ?end_term ?partyLabel WHERE {
+  ?mayor (wdt:P31/wdt:P279*) wd:Q5.  # look for human beings
+  ?mayor wdt:P39 wd:Q17078548.       # that list "Mayor of Madrid" as occupation
+  ?mayor p:P39 ?statement.           # and from their term
+  ?statement ps:P39 wd:Q17078548.    # **and only for the term as "Mayor of Madrid"**
+  ?statement pq:P580 ?start_term.    # obtain the start date
+  OPTIONAL {?statement pq:P582 ?end_term}.   # and the end date if present
+  OPTIONAL {?mayor p:P102 [ps:P102 ?party]}. # and the party if present
+  FILTER(year(?start_term) >= 1980 || year(?end_term) >= 1980) # and just take people around 1980 onwards
+
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "es". }
+}
+ORDER BY ?start_term
+'
+
+res <- query_wikidata(query)
+print(res)
+```
+
+## Most populated countries
+
+```{r}
+query <- '
+SELECT ?country ?countryLabel ?population ?area
+WHERE
+{
+  ?country wdt:P31/wdt:P279* wd:Q6256;
+           wdt:P1082 ?population;
+           wdt:P2046 ?area.
+  SERVICE wikibase:label {bd:serviceParam wikibase:language "en"}
+}
+ORDER BY DESC(?population)
+LIMIT 10
+'
+
+res <- query_wikidata(query)
+print(res)
+```
+
+It turns out we need to filter using actual countries. If property `P576` does not exist, that means the country currently exists.
+
+```{r}
+query <- '
+SELECT DISTINCT ?country ?countryLabel ?population ?area
+WHERE
+{
+  ?country wdt:P31/wdt:P279* wd:Q6256;
+           wdt:P1082 ?population;
+           wdt:P2046 ?area.
+  FILTER NOT EXISTS {?country p:P576 ?x}.
+  SERVICE wikibase:label {bd:serviceParam wikibase:language "en"}
+}
+ORDER BY DESC(?population)
+LIMIT 10
+'
+
+res <- query_wikidata(query)
+print(res)
+```
+
+## Replicate James Bond table
+
+Replicate the table used in [this blog post](https://rinzewind.org/blog-en/2015/bond-movies-through-data.html).
+
+```{r james_bond}
+query <- '
+SELECT ?film ?filmLabel (MIN(?publication_date) AS ?first_pub_date) ?actor_nameLabel ?box_office
+WHERE {
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "[AUTO_LANGUAGE],en". }
+  # Select films of the James Bond series published in the past
+  ?film (wdt:P31/wdt:P279*) wd:Q11424.      # films
+  ?film wdt:P179 wd:Q2484680.               # of the James Bond series
+  ?film p:P577 [ps:P577 ?publication_date]. # get the publication date
+  FILTER (year(?publication_date) <= 2018)  # remove "Bond 25" from the list
+  # Cast member: get who played James Bond
+  ?film p:P161 ?actorStatement.             # actors in the movie
+  ?actorStatement pq:P453 wd:Q2009573.      # but only the one playing Bond
+  ?actorStatement ps:P161 ?actor_name.
+  # Box office
+  ?film p:P2142 ?box_officeStatement.
+  ?box_officeStatement ps:P2142 ?box_office
+}
+GROUP BY ?film ?filmLabel ?actor_nameLabel ?box_office
+ORDER BY ?first_pub_date
+'
+res <- query_wikidata(query)
+print(res)
 ```
